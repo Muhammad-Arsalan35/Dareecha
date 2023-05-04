@@ -3,7 +3,6 @@ from baham.enum_types import VehicleType, VehicleStatus, UserType
 from baham.constants import COLORS, TOWNS
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.core.exceptions import PermissionDenied
 
 
 def validate_color(val):
@@ -40,14 +39,16 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.username} {self.user.first_name} {self.user.last_name}"
 
-    def delete(self, using=None, keep_parents=False, request_user=None):
-        if not request_user or not request_user.is_staff:
-            raise PermissionDenied("You do not have permission.")
-        super().delete(using=using, keep_parents=keep_parents)
+    def delete(self, *args, **kwargs):
+        if not self.user.is_staff:
+            raise PermissionError(
+                "NOT aLLOWED")
+        super().delete(*args, **kwargs)
 
 
 class VehicleModel(models.Model):
     make_id = models.AutoField(primary_key=True, db_column='id')
+    # # E.g. Vitz, Corolla, Swift
     vendor = models.CharField(max_length=20, null=False, blank=False)
     model = models.CharField(max_length=20, null=False,
                              blank=False, default='Unknown')
@@ -97,7 +98,37 @@ class Vehicle(models.Model):
     def __str__(self):
         return f"{self.model.vendor} {self.model.model} {self.color}"
 
-    def delete(self, using=None, keep_parents=False, request_user=None):
-        if not request_user or not request_user.is_staff:
-            raise PermissionDenied("You do not have permission.")
-        super().delete(using=using, keep_parents=keep_parents)
+    def delete(self, *args, **kwargs):
+        if self.owner.is_staff:
+            super().delete(*args, **kwargs)
+        else:
+            raise PermissionError(
+                "NOT aLLOWED")
+
+
+class Contract (models.Model):
+    contract_id = models.AutoField(primary_key=True, db_column='id')
+    vehicle = models.ForeignKey(Vehicle, null=False, on_delete=models.CASCADE)
+    companion = models.ForeignKey(
+        UserProfile, null=False, on_delete=models.CASCADE)
+    effective_start_date = models.DateField(null=False)
+    expiry_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    fuel_share = models.PositiveSmallIntegerField(
+        help_text="Percentage of fuel contribution")
+    maintenance_share = models.PositiveSmallIntegerField(
+        help_text="Percentage of maintainance contribution")
+    schedule = models.JSONField()  # use TODO: Scheduler
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_on = models.DateTimeField(auto_now_add=True, editable=False)
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    updated_on = models.DateTimeField(auto_now=True, editable=False)
+
+    def delete(self, *args, **kwargs):
+        if self.companion.user.is_staff:
+            super().delete(*args, **kwargs)
+        else:
+            raise PermissionError(
+                "NOT aLLOWED")
